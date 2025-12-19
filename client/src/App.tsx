@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { fetchContainerDetail, fetchContainers } from './api'
 import type { ContainerDetail, ContainerInfo } from './types'
@@ -201,10 +201,6 @@ function App() {
   const runningCount = useMemo(() => containers.filter((c) => c.state === 'running').length, [containers])
 
   const handleManualRefresh = () => loadContainers()
-  const selectedContainer = useMemo(
-    () => (selectedId ? containers.find((container) => container.id === selectedId) || null : null),
-    [containers, selectedId]
-  )
   const selectedDetail = selectedId ? detailById[selectedId] || null : null
   const selectedHistory = selectedId ? history[selectedId] || null : null
 
@@ -239,9 +235,12 @@ function App() {
     <div className="app-shell">
       <div className="panel">
         <div className="header">
-          <h1 className="header-title">
-            ctop<span>·web</span>
-          </h1>
+          <div className="header-brand">
+            <img className="brand-logo" src="/caperadar-logo.svg" alt="caperadar logo" />
+            <h1 className="header-title">
+              ctop<span>·web</span>
+            </h1>
+          </div>
           <div className="meta">
             <span>
               Containers: <strong>{containers.length}</strong>
@@ -307,232 +306,244 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {filteredContainers.map((container) => (
-                  <tr key={container.id}>
-                    <td>
-                      <div className="name-cell">
-                        <span className={`state-indicator ${stateClassMap[container.state] ?? 'state-unknown'}`} />
-                        <div className="name-stack">
-                          <button className="name-button" onClick={() => handleSelect(container.id)}>
-                            {container.name}
-                          </button>
-                          <span className="subtle">{container.raw.shortId}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="badge-stack">
-                        {splitList(container.ports).map((item, index) => (
-                          <span key={index} className="net-badge">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="badge-stack">
-                        {splitList(container.networks).map((network, index) => (
-                          <span key={index} className="net-badge">
-                            {network}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      <UsageBar type="cpu" percent={container.cpu} label={`${container.cpu.toFixed(1)}%`} />
-                    </td>
-                    <td>
-                      <UsageBar
-                        type="mem"
-                        percent={container.memory.percent}
-                        label={`${container.memory.usage} / ${container.memory.limit}`}
-                      />
-                    </td>
-                    <td>
-                      <div className="badge-stack">
-                        <span className="net-badge">⬇ {container.netIO.rx}</span>
-                        <span className="net-badge">⬆ {container.netIO.tx}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="badge-stack">
-                        <span className="block-badge">R {container.blockIO.read}</span>
-                        <span className="block-badge">W {container.blockIO.write}</span>
-                      </div>
-                    </td>
-                    <td>{container.pids}</td>
-                    <td>{container.uptime}</td>
-                  </tr>
-                ))}
+                {filteredContainers.map((container) => {
+                  const isSelected = container.id === selectedId
+
+                  return (
+                    <Fragment key={container.id}>
+                      <tr>
+                        <td>
+                          <div className="name-cell">
+                            <span className={`state-indicator ${stateClassMap[container.state] ?? 'state-unknown'}`} />
+                            <div className="name-stack">
+                              <button className="name-button" onClick={() => handleSelect(container.id)}>
+                                {container.name}
+                              </button>
+                              <span className="subtle">{container.raw.shortId}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="badge-stack">
+                            {splitList(container.ports).map((item, index) => (
+                              <span key={index} className="net-badge">
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <div className="badge-stack">
+                            {splitList(container.networks).map((network, index) => (
+                              <span key={index} className="net-badge">
+                                {network}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td>
+                          <UsageBar type="cpu" percent={container.cpu} label={`${container.cpu.toFixed(1)}%`} />
+                        </td>
+                        <td>
+                          <UsageBar
+                            type="mem"
+                            percent={container.memory.percent}
+                            label={`${container.memory.usage} / ${container.memory.limit}`}
+                          />
+                        </td>
+                        <td>
+                          <div className="badge-stack">
+                            <span className="net-badge">⬇ {container.netIO.rx}</span>
+                            <span className="net-badge">⬆ {container.netIO.tx}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="badge-stack">
+                            <span className="block-badge">R {container.blockIO.read}</span>
+                            <span className="block-badge">W {container.blockIO.write}</span>
+                          </div>
+                        </td>
+                        <td>{container.pids}</td>
+                        <td>{container.uptime}</td>
+                      </tr>
+                      {isSelected && (
+                        <tr className="detail-row">
+                          <td colSpan={9}>
+                            <div className="detail-panel inline">
+                              <div className="detail-header">
+                                <div>
+                                  <div className="detail-title">
+                                    <span
+                                      className={`state-indicator ${stateClassMap[container.state] ?? 'state-unknown'}`}
+                                    />
+                                    <h2>{selectedDetail?.name || container.name}</h2>
+                                  </div>
+                                  <p className="detail-subtle">
+                                    {selectedDetail?.image || '-'} · {container.raw.shortId}
+                                  </p>
+                                </div>
+                                <div className="detail-actions">
+                                  <button
+                                    className="control"
+                                    onClick={() => selectedId && loadDetail(selectedId)}
+                                    disabled={detailLoading}
+                                  >
+                                    Refresh Detail
+                                  </button>
+                                  <button className="control" onClick={() => setSelectedId(null)}>
+                                    Close
+                                  </button>
+                                </div>
+                              </div>
+
+                              {detailError && <div className="error-banner">{detailError}</div>}
+
+                              <div className="detail-grid">
+                                <section className="detail-card">
+                                  <h3>Overview</h3>
+                                  <dl>
+                                    <div>
+                                      <dt>Status</dt>
+                                      <dd>{selectedDetail?.status || container.state || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Health</dt>
+                                      <dd>{selectedDetail?.health || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Uptime</dt>
+                                      <dd>{container.uptime || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>PID</dt>
+                                      <dd>{selectedDetail?.pid ?? container.pids ?? '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Restarts</dt>
+                                      <dd>{selectedDetail?.restartCount ?? '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Ports</dt>
+                                      <dd>{selectedDetail?.ports || container.ports || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Networks</dt>
+                                      <dd>{selectedDetail?.networks || container.networks || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>IPs</dt>
+                                      <dd>{selectedDetail?.ipAddresses?.length ? selectedDetail.ipAddresses.join(', ') : '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Created</dt>
+                                      <dd>{formatDateTime(selectedDetail?.created || null)}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Started</dt>
+                                      <dd>{formatDateTime(selectedDetail?.startedAt || null)}</dd>
+                                    </div>
+                                  </dl>
+                                </section>
+
+                                <section className="detail-card">
+                                  <h3>Runtime</h3>
+                                  <dl>
+                                    <div>
+                                      <dt>Command</dt>
+                                      <dd>{selectedDetail?.command || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Entrypoint</dt>
+                                      <dd>{selectedDetail?.entrypoint || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>User</dt>
+                                      <dd>{selectedDetail?.user || '-'}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Working Dir</dt>
+                                      <dd>{selectedDetail?.workingDir || '-'}</dd>
+                                    </div>
+                                  </dl>
+                                </section>
+
+                                <section className="detail-card detail-metrics">
+                                  <h3>Resource Trends</h3>
+                                  <div className="chart-grid">
+                                    <div className="chart-block">
+                                      <div className="chart-header">
+                                        <span>CPU</span>
+                                        <span>{`${container.cpu.toFixed(1)}%`}</span>
+                                      </div>
+                                      <Sparkline data={selectedHistory?.cpu || []} max={100} colorClass="cpu" />
+                                    </div>
+                                    <div className="chart-block">
+                                      <div className="chart-header">
+                                        <span>MEM</span>
+                                        <span>{`${container.memory.usage} / ${container.memory.limit}`}</span>
+                                      </div>
+                                      <Sparkline data={selectedHistory?.mem || []} max={100} colorClass="mem" />
+                                    </div>
+                                    <div className="chart-block">
+                                      <div className="chart-header">
+                                        <span>NET RX</span>
+                                        <span>{container.netIO.rx || '-'}</span>
+                                      </div>
+                                      <Sparkline data={selectedHistory?.netRx || []} colorClass="net" />
+                                    </div>
+                                    <div className="chart-block">
+                                      <div className="chart-header">
+                                        <span>NET TX</span>
+                                        <span>{container.netIO.tx || '-'}</span>
+                                      </div>
+                                      <Sparkline data={selectedHistory?.netTx || []} colorClass="net-alt" />
+                                    </div>
+                                    <div className="chart-block">
+                                      <div className="chart-header">
+                                        <span>IO READ</span>
+                                        <span>{container.blockIO.read || '-'}</span>
+                                      </div>
+                                      <Sparkline data={selectedHistory?.blockRead || []} colorClass="io" />
+                                    </div>
+                                    <div className="chart-block">
+                                      <div className="chart-header">
+                                        <span>IO WRITE</span>
+                                        <span>{container.blockIO.write || '-'}</span>
+                                      </div>
+                                      <Sparkline data={selectedHistory?.blockWrite || []} colorClass="io-alt" />
+                                    </div>
+                                  </div>
+                                </section>
+
+                                <section className="detail-card detail-env">
+                                  <h3>Environment</h3>
+                                  {detailLoading && !selectedDetail ? (
+                                    <p className="detail-muted">Loading environment variables…</p>
+                                  ) : selectedDetail?.env?.length ? (
+                                    <div className="env-grid">
+                                      {selectedDetail.env.map((item) => (
+                                        <div key={item.key} className="env-row">
+                                          <span>{item.key}</span>
+                                          <span>{item.value || '-'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="detail-muted">No environment variables reported.</p>
+                                  )}
+                                </section>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
               </tbody>
             </table>
           )}
         </div>
-        {selectedId && (
-          <div className="detail-panel">
-            <div className="detail-header">
-              <div>
-                <div className="detail-title">
-                  <span className={`state-indicator ${stateClassMap[selectedContainer?.state ?? 'unknown'] ?? 'state-unknown'}`} />
-                  <h2>{selectedDetail?.name || selectedContainer?.name || 'Container'}</h2>
-                </div>
-                <p className="detail-subtle">
-                  {selectedDetail?.image || '-'} · {selectedContainer?.raw.shortId || selectedDetail?.id || '-'}
-                </p>
-              </div>
-              <div className="detail-actions">
-                <button className="control" onClick={() => selectedId && loadDetail(selectedId)} disabled={detailLoading}>
-                  Refresh Detail
-                </button>
-                <button className="control" onClick={() => setSelectedId(null)}>
-                  Close
-                </button>
-              </div>
-            </div>
-
-            {detailError && <div className="error-banner">{detailError}</div>}
-
-            <div className="detail-grid">
-              <section className="detail-card">
-                <h3>Overview</h3>
-                <dl>
-                  <div>
-                    <dt>Status</dt>
-                    <dd>{selectedDetail?.status || selectedContainer?.state || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Health</dt>
-                    <dd>{selectedDetail?.health || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Uptime</dt>
-                    <dd>{selectedContainer?.uptime || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>PID</dt>
-                    <dd>{selectedDetail?.pid ?? selectedContainer?.pids ?? '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Restarts</dt>
-                    <dd>{selectedDetail?.restartCount ?? '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Ports</dt>
-                    <dd>{selectedDetail?.ports || selectedContainer?.ports || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Networks</dt>
-                    <dd>{selectedDetail?.networks || selectedContainer?.networks || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>IPs</dt>
-                    <dd>{selectedDetail?.ipAddresses?.length ? selectedDetail.ipAddresses.join(', ') : '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Created</dt>
-                    <dd>{formatDateTime(selectedDetail?.created || null)}</dd>
-                  </div>
-                  <div>
-                    <dt>Started</dt>
-                    <dd>{formatDateTime(selectedDetail?.startedAt || null)}</dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section className="detail-card">
-                <h3>Runtime</h3>
-                <dl>
-                  <div>
-                    <dt>Command</dt>
-                    <dd>{selectedDetail?.command || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Entrypoint</dt>
-                    <dd>{selectedDetail?.entrypoint || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>User</dt>
-                    <dd>{selectedDetail?.user || '-'}</dd>
-                  </div>
-                  <div>
-                    <dt>Working Dir</dt>
-                    <dd>{selectedDetail?.workingDir || '-'}</dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section className="detail-card detail-metrics">
-                <h3>Resource Trends</h3>
-                <div className="chart-grid">
-                  <div className="chart-block">
-                    <div className="chart-header">
-                      <span>CPU</span>
-                      <span>{selectedContainer ? `${selectedContainer.cpu.toFixed(1)}%` : '-'}</span>
-                    </div>
-                    <Sparkline data={selectedHistory?.cpu || []} max={100} colorClass="cpu" />
-                  </div>
-                  <div className="chart-block">
-                    <div className="chart-header">
-                      <span>MEM</span>
-                      <span>
-                        {selectedContainer
-                          ? `${selectedContainer.memory.usage} / ${selectedContainer.memory.limit}`
-                          : '-'}
-                      </span>
-                    </div>
-                    <Sparkline data={selectedHistory?.mem || []} max={100} colorClass="mem" />
-                  </div>
-                  <div className="chart-block">
-                    <div className="chart-header">
-                      <span>NET RX</span>
-                      <span>{selectedContainer?.netIO.rx || '-'}</span>
-                    </div>
-                    <Sparkline data={selectedHistory?.netRx || []} colorClass="net" />
-                  </div>
-                  <div className="chart-block">
-                    <div className="chart-header">
-                      <span>NET TX</span>
-                      <span>{selectedContainer?.netIO.tx || '-'}</span>
-                    </div>
-                    <Sparkline data={selectedHistory?.netTx || []} colorClass="net-alt" />
-                  </div>
-                  <div className="chart-block">
-                    <div className="chart-header">
-                      <span>IO READ</span>
-                      <span>{selectedContainer?.blockIO.read || '-'}</span>
-                    </div>
-                    <Sparkline data={selectedHistory?.blockRead || []} colorClass="io" />
-                  </div>
-                  <div className="chart-block">
-                    <div className="chart-header">
-                      <span>IO WRITE</span>
-                      <span>{selectedContainer?.blockIO.write || '-'}</span>
-                    </div>
-                    <Sparkline data={selectedHistory?.blockWrite || []} colorClass="io-alt" />
-                  </div>
-                </div>
-              </section>
-
-              <section className="detail-card detail-env">
-                <h3>Environment</h3>
-                {detailLoading && !selectedDetail ? (
-                  <p className="detail-muted">Loading environment variables…</p>
-                ) : selectedDetail?.env?.length ? (
-                  <div className="env-grid">
-                    {selectedDetail.env.map((item) => (
-                      <div key={item.key} className="env-row">
-                        <span>{item.key}</span>
-                        <span>{item.value || '-'}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="detail-muted">No environment variables reported.</p>
-                )}
-              </section>
-            </div>
-          </div>
-        )}
         <div className="footer-note">
           Auto refresh {isPaused ? 'paused' : `every ${Math.round(refreshMs / 1000)}s`}
           {refreshing && !loading ? ' · updating…' : ''}

@@ -18,6 +18,20 @@
   margin-bottom: 1.5rem;
 }
 
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.brand-logo {
+  height: 34px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 6px 10px rgba(24, 224, 168, 0.18));
+  opacity: 0.9;
+}
+
 .header-title {
   font-size: 1.75rem;
   font-weight: 600;
@@ -136,6 +150,19 @@ tr:last-child td {
 
 tr:hover td {
   background: rgba(56, 189, 248, 0.05);
+}
+
+.detail-row td {
+  padding: 0;
+  background: rgba(2, 6, 23, 0.85);
+}
+
+.detail-panel.inline {
+  margin: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: 1px solid rgba(30, 41, 59, 0.9);
 }
 
 .name-cell {
@@ -534,5 +561,9 @@ tr:hover td {
 
   .detail-card dd {
     text-align: left;
+  }
+
+  .brand-logo {
+    height: 36px;
   }
 }

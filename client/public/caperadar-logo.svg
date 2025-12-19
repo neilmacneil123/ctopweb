@@ -1,0 +1,36 @@
+<svg width="520" height="160" viewBox="0 0 520 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(20 20)">
+    <circle cx="60" cy="60" r="52" stroke="#18E0A8" stroke-width="4"/>
+    <circle cx="60" cy="60" r="34" stroke="#0F8F80" stroke-width="2" opacity="0.6"/>
+    <g transform="translate(16 16) scale(0.25)">
+      <path
+        d="M 180 20
+           Q 220 10, 260 25
+           C 300 40, 340 70, 360 110
+           Q 380 150, 370 190
+           C 360 230, 350 270, 320 300
+           Q 290 330, 250 340
+           C 210 350, 170 330, 140 300
+           Q 110 270, 100 230
+           C 90 190, 110 150, 140 120
+           Q 160 100, 180 20
+           z
+           M 200 150
+           C 220 160, 230 180, 220 200
+           Q 210 220, 190 230
+           C 170 240, 160 220, 170 200
+           Q 180 180, 200 150
+           z"
+        fill="#18E0A8"
+        stroke="#0F8F80"
+        stroke-width="8"
+        opacity="0.95"
+      />
+    </g>
+  </g>
+  <g transform="translate(140 28)">
+    <text x="0" y="70" font-family="Trebuchet MS, Verdana, sans-serif" font-size="52" font-weight="700" fill="#E6F5FF" letter-spacing="2">
+      CAPERADAR
+    </text>
+  </g>
+</svg>
