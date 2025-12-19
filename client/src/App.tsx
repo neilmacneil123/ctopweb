@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
-import { fetchContainers } from './api'
-import type { ContainerInfo } from './types'
+import { fetchContainerDetail, fetchContainers } from './api'
+import type { ContainerDetail, ContainerInfo } from './types'
 
 const REFRESH_OPTIONS = [
   { label: '3s', value: 3000 },
@@ -31,11 +31,65 @@ const UsageBar = ({ percent, label, type }: { percent: number; label: string; ty
   )
 }
 
+const HISTORY_POINTS = 40
+
+type MetricHistory = {
+  cpu: number[]
+  mem: number[]
+  netRx: number[]
+  netTx: number[]
+  blockRead: number[]
+  blockWrite: number[]
+}
+
+const Sparkline = ({
+  data,
+  max,
+  colorClass,
+}: {
+  data: number[]
+  max?: number
+  colorClass: string
+}) => {
+  const safeData = data.length ? data : [0]
+  const peak = max ?? Math.max(...safeData, 1)
+  const width = 120
+  const height = 40
+  const step = safeData.length > 1 ? width / (safeData.length - 1) : 0
+  const points = safeData
+    .map((value, index) => {
+      const safeValue = Number.isFinite(value) ? value : 0
+      const ratio = peak > 0 ? Math.min(Math.max(safeValue / peak, 0), 1) : 0
+      const x = index * step
+      const y = height - ratio * (height - 4) - 2
+      return `${x.toFixed(2)},${y.toFixed(2)}`
+    })
+    .join(' ')
+  const lastPoint = points.split(' ').slice(-1)[0] || '0,0'
+  const [lastX, lastY] = lastPoint.split(',')
+
+  return (
+    <div className={`sparkline ${colorClass}`}>
+      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <polyline points={points} />
+        <circle cx={lastX} cy={lastY} r="2.5" />
+      </svg>
+    </div>
+  )
+}
+
 function formatTimestamp(value: string | null) {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
   return date.toLocaleTimeString()
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
 }
 
 function splitList(value: string) {
@@ -52,6 +106,11 @@ function App() {
   const [refreshMs, setRefreshMs] = useState(5000)
   const [isPaused, setIsPaused] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detailById, setDetailById] = useState<Record<string, ContainerDetail>>({})
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [history, setHistory] = useState<Record<string, MetricHistory>>({})
 
   const loadContainers = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent ?? false
@@ -90,6 +149,43 @@ function App() {
     return () => clearInterval(id)
   }, [isPaused, refreshMs, loadContainers])
 
+  useEffect(() => {
+    setHistory((prev) => {
+      const next: Record<string, MetricHistory> = {}
+      const append = (list: number[], value: number) => {
+        const nextList = list.concat(Number.isFinite(value) ? value : 0)
+        return nextList.slice(-HISTORY_POINTS)
+      }
+
+      containers.forEach((container) => {
+        const current = prev[container.id] || {
+          cpu: [],
+          mem: [],
+          netRx: [],
+          netTx: [],
+          blockRead: [],
+          blockWrite: [],
+        }
+        next[container.id] = {
+          cpu: append(current.cpu, container.cpu),
+          mem: append(current.mem, container.memory.percent),
+          netRx: append(current.netRx, container.netIOBytes?.rx ?? 0),
+          netTx: append(current.netTx, container.netIOBytes?.tx ?? 0),
+          blockRead: append(current.blockRead, container.blockIOBytes?.read ?? 0),
+          blockWrite: append(current.blockWrite, container.blockIOBytes?.write ?? 0),
+        }
+      })
+
+      return next
+    })
+  }, [containers])
+
+  useEffect(() => {
+    if (selectedId && !containers.some((container) => container.id === selectedId)) {
+      setSelectedId(null)
+    }
+  }, [containers, selectedId])
+
   const filteredContainers = useMemo(() => {
     const needle = filterQuery.trim().toLowerCase()
     if (!needle) return containers
@@ -105,6 +201,39 @@ function App() {
   const runningCount = useMemo(() => containers.filter((c) => c.state === 'running').length, [containers])
 
   const handleManualRefresh = () => loadContainers()
+  const selectedContainer = useMemo(
+    () => (selectedId ? containers.find((container) => container.id === selectedId) || null : null),
+    [containers, selectedId]
+  )
+  const selectedDetail = selectedId ? detailById[selectedId] || null : null
+  const selectedHistory = selectedId ? history[selectedId] || null : null
+
+  const loadDetail = useCallback(async (containerId: string) => {
+    setDetailLoading(true)
+    setDetailError(null)
+    try {
+      const detail = await fetchContainerDetail(containerId)
+      setDetailById((prev) => ({ ...prev, [containerId]: detail }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load container detail'
+      setDetailError(message)
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  const handleSelect = (containerId: string) => {
+    if (selectedId === containerId) {
+      setSelectedId(null)
+      setDetailError(null)
+      return
+    }
+    setSelectedId(containerId)
+    setDetailError(null)
+    if (!detailById[containerId]) {
+      loadDetail(containerId)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -184,7 +313,9 @@ function App() {
                       <div className="name-cell">
                         <span className={`state-indicator ${stateClassMap[container.state] ?? 'state-unknown'}`} />
                         <div className="name-stack">
-                          <span className="name">{container.name}</span>
+                          <button className="name-button" onClick={() => handleSelect(container.id)}>
+                            {container.name}
+                          </button>
                           <span className="subtle">{container.raw.shortId}</span>
                         </div>
                       </div>
@@ -237,6 +368,171 @@ function App() {
             </table>
           )}
         </div>
+        {selectedId && (
+          <div className="detail-panel">
+            <div className="detail-header">
+              <div>
+                <div className="detail-title">
+                  <span className={`state-indicator ${stateClassMap[selectedContainer?.state ?? 'unknown'] ?? 'state-unknown'}`} />
+                  <h2>{selectedDetail?.name || selectedContainer?.name || 'Container'}</h2>
+                </div>
+                <p className="detail-subtle">
+                  {selectedDetail?.image || '-'} · {selectedContainer?.raw.shortId || selectedDetail?.id || '-'}
+                </p>
+              </div>
+              <div className="detail-actions">
+                <button className="control" onClick={() => selectedId && loadDetail(selectedId)} disabled={detailLoading}>
+                  Refresh Detail
+                </button>
+                <button className="control" onClick={() => setSelectedId(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {detailError && <div className="error-banner">{detailError}</div>}
+
+            <div className="detail-grid">
+              <section className="detail-card">
+                <h3>Overview</h3>
+                <dl>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{selectedDetail?.status || selectedContainer?.state || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Health</dt>
+                    <dd>{selectedDetail?.health || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Uptime</dt>
+                    <dd>{selectedContainer?.uptime || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>PID</dt>
+                    <dd>{selectedDetail?.pid ?? selectedContainer?.pids ?? '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Restarts</dt>
+                    <dd>{selectedDetail?.restartCount ?? '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Ports</dt>
+                    <dd>{selectedDetail?.ports || selectedContainer?.ports || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Networks</dt>
+                    <dd>{selectedDetail?.networks || selectedContainer?.networks || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>IPs</dt>
+                    <dd>{selectedDetail?.ipAddresses?.length ? selectedDetail.ipAddresses.join(', ') : '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Created</dt>
+                    <dd>{formatDateTime(selectedDetail?.created || null)}</dd>
+                  </div>
+                  <div>
+                    <dt>Started</dt>
+                    <dd>{formatDateTime(selectedDetail?.startedAt || null)}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section className="detail-card">
+                <h3>Runtime</h3>
+                <dl>
+                  <div>
+                    <dt>Command</dt>
+                    <dd>{selectedDetail?.command || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Entrypoint</dt>
+                    <dd>{selectedDetail?.entrypoint || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>User</dt>
+                    <dd>{selectedDetail?.user || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Working Dir</dt>
+                    <dd>{selectedDetail?.workingDir || '-'}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section className="detail-card detail-metrics">
+                <h3>Resource Trends</h3>
+                <div className="chart-grid">
+                  <div className="chart-block">
+                    <div className="chart-header">
+                      <span>CPU</span>
+                      <span>{selectedContainer ? `${selectedContainer.cpu.toFixed(1)}%` : '-'}</span>
+                    </div>
+                    <Sparkline data={selectedHistory?.cpu || []} max={100} colorClass="cpu" />
+                  </div>
+                  <div className="chart-block">
+                    <div className="chart-header">
+                      <span>MEM</span>
+                      <span>
+                        {selectedContainer
+                          ? `${selectedContainer.memory.usage} / ${selectedContainer.memory.limit}`
+                          : '-'}
+                      </span>
+                    </div>
+                    <Sparkline data={selectedHistory?.mem || []} max={100} colorClass="mem" />
+                  </div>
+                  <div className="chart-block">
+                    <div className="chart-header">
+                      <span>NET RX</span>
+                      <span>{selectedContainer?.netIO.rx || '-'}</span>
+                    </div>
+                    <Sparkline data={selectedHistory?.netRx || []} colorClass="net" />
+                  </div>
+                  <div className="chart-block">
+                    <div className="chart-header">
+                      <span>NET TX</span>
+                      <span>{selectedContainer?.netIO.tx || '-'}</span>
+                    </div>
+                    <Sparkline data={selectedHistory?.netTx || []} colorClass="net-alt" />
+                  </div>
+                  <div className="chart-block">
+                    <div className="chart-header">
+                      <span>IO READ</span>
+                      <span>{selectedContainer?.blockIO.read || '-'}</span>
+                    </div>
+                    <Sparkline data={selectedHistory?.blockRead || []} colorClass="io" />
+                  </div>
+                  <div className="chart-block">
+                    <div className="chart-header">
+                      <span>IO WRITE</span>
+                      <span>{selectedContainer?.blockIO.write || '-'}</span>
+                    </div>
+                    <Sparkline data={selectedHistory?.blockWrite || []} colorClass="io-alt" />
+                  </div>
+                </div>
+              </section>
+
+              <section className="detail-card detail-env">
+                <h3>Environment</h3>
+                {detailLoading && !selectedDetail ? (
+                  <p className="detail-muted">Loading environment variables…</p>
+                ) : selectedDetail?.env?.length ? (
+                  <div className="env-grid">
+                    {selectedDetail.env.map((item) => (
+                      <div key={item.key} className="env-row">
+                        <span>{item.key}</span>
+                        <span>{item.value || '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="detail-muted">No environment variables reported.</p>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
         <div className="footer-note">
           Auto refresh {isPaused ? 'paused' : `every ${Math.round(refreshMs / 1000)}s`}
           {refreshing && !loading ? ' · updating…' : ''}

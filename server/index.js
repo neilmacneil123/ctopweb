@@ -98,12 +98,35 @@ const formatNetworks = (networkSettings) => {
   return entries.length ? entries.join(', ') : '-';
 };
 
+const formatPortsFromInspect = (portMap) => {
+  if (!portMap || Object.keys(portMap).length === 0) return '-';
+  const entries = Object.entries(portMap).flatMap(([containerPort, bindings]) => {
+    if (!bindings || bindings.length === 0) {
+      return containerPort;
+    }
+    return bindings.map((binding) => {
+      const host = binding.HostIp && binding.HostIp !== '' ? binding.HostIp : '0.0.0.0';
+      return `${host}:${binding.HostPort} -> ${containerPort}`;
+    });
+  });
+  return entries.length ? entries.join(', ') : '-';
+};
+
 const containerState = (inspectData) => {
   if (!inspectData || !inspectData.State) return 'unknown';
   if (inspectData.State.Paused) return 'paused';
   if (inspectData.State.Restarting) return 'restarting';
   if (inspectData.State.Running) return 'running';
   return 'stopped';
+};
+
+const formatEnvVars = (envList) => {
+  if (!Array.isArray(envList)) return [];
+  return envList.map((entry) => {
+    const idx = entry.indexOf('=');
+    if (idx === -1) return { key: entry, value: '' };
+    return { key: entry.slice(0, idx), value: entry.slice(idx + 1) };
+  });
 };
 
 async function buildContainerPayload(containerInfo) {
@@ -148,9 +171,17 @@ async function buildContainerPayload(containerInfo) {
       rx: formatBytes(net.rx),
       tx: formatBytes(net.tx)
     },
+    netIOBytes: {
+      rx: net.rx,
+      tx: net.tx
+    },
     blockIO: {
       read: formatBytes(blk.read),
       write: formatBytes(blk.write)
+    },
+    blockIOBytes: {
+      read: blk.read,
+      write: blk.write
     },
     pids,
     uptime,
@@ -168,6 +199,43 @@ app.get('/api/containers', async (req, res) => {
   } catch (err) {
     console.error('Failed to fetch container stats', err);
     res.status(500).json({ message: 'Unable to fetch container data', error: err.message });
+  }
+});
+
+app.get('/api/containers/:id', async (req, res) => {
+  try {
+    const container = docker.getContainer(req.params.id);
+    const inspectInfo = await container.inspect();
+    const state = inspectInfo.State || {};
+    const config = inspectInfo.Config || {};
+    const networks = inspectInfo.NetworkSettings || {};
+    const ipAddresses = networks.Networks ? Object.values(networks.Networks).map((info) => info.IPAddress || '0.0.0.0') : [];
+
+    res.json({
+      id: inspectInfo.Id,
+      name: inspectInfo.Name ? inspectInfo.Name.replace(/^\//, '') : inspectInfo.Id.substring(0, 12),
+      image: config.Image || '-',
+      state: containerState(inspectInfo),
+      status: state.Status || 'unknown',
+      created: inspectInfo.Created || null,
+      startedAt: state.StartedAt || null,
+      finishedAt: state.FinishedAt || null,
+      health: state.Health && state.Health.Status ? state.Health.Status : '-',
+      restartCount: inspectInfo.RestartCount || 0,
+      pid: state.Pid || 0,
+      ports: formatPortsFromInspect(networks.Ports),
+      networks: formatNetworks(networks),
+      ipAddresses,
+      command: Array.isArray(config.Cmd) && config.Cmd.length ? config.Cmd.join(' ') : '-',
+      entrypoint: Array.isArray(config.Entrypoint) && config.Entrypoint.length ? config.Entrypoint.join(' ') : '-',
+      workingDir: config.WorkingDir || '-',
+      user: config.User || '-',
+      env: formatEnvVars(config.Env),
+      labels: config.Labels || {}
+    });
+  } catch (err) {
+    console.error('Failed to fetch container detail', err);
+    res.status(500).json({ message: 'Unable to fetch container detail', error: err.message });
   }
 });
 
