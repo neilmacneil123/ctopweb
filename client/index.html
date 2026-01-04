@@ -2,12 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <meta name="ctop-api-base" content="" />
+    <link rel="icon" type="image/svg+xml" href="/caperadar-logo.svg" />
+    <title>ctop ú web</title>
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div class="app-shell">
+      <div class="panel">
+        <div class="header">
+          <div class="header-brand">
+            <img class="brand-logo" src="/caperadar-logo.svg" alt="caperadar logo" />
+            <h1 class="header-title">
+              ctop<span>úweb</span>
+            </h1>
+          </div>
+          <div class="meta">
+            <span>Containers: <strong data-containers-count>0</strong></span>
+            <span>Running: <strong data-running-count>0</strong></span>
+            <span>Updated: <strong data-updated-time>-</strong></span>
+          </div>
+        </div>
+
+        <div class="controls">
+          <input
+            id="filter-input"
+            type="search"
+            placeholder="Filter containers (name, id, network)"
+            autocomplete="off"
+          />
+          <div class="control-group">
+            <button id="refresh-button" class="control primary" type="button">Refresh</button>
+            <button id="pause-button" class="control" type="button">Pause Auto</button>
+            <select id="refresh-select" class="control"></select>
+          </div>
+        </div>
+
+        <div id="error-banner" class="error-banner" hidden></div>
+
+        <div id="table-container" class="table-container"></div>
+
+        <div id="footer-note" class="footer-note"></div>
+      </div>
+    </div>
+    <script src="/config.js"></script>
+    <script src="/app.js" defer></script>
   </body>
 </html>
