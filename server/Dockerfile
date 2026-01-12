@@ -1,6 +1,8 @@
 FROM golang:1.22-alpine AS builder
 WORKDIR /src
 
+ENV GOTOOLCHAIN=auto
+
 COPY go.mod ./
 RUN go mod download
 

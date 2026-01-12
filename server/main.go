@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 )
@@ -210,7 +211,7 @@ func handleContainerDetail(w http.ResponseWriter, r *http.Request, cli *client.C
 	}
 	config := inspectInfo.Config
 	if config == nil {
-		config = &types.ContainerConfig{}
+		config = &container.Config{}
 	}
 	networks := inspectInfo.NetworkSettings
 
