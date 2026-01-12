@@ -19,6 +19,8 @@ services:
       context: ./client
     depends_on:
       - api
+    security_opt:
+      - "seccomp=unconfined"
     ports:
       - "8080:80"
     restart: unless-stopped
