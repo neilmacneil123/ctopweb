@@ -7,6 +7,7 @@ services:
       - DOCKER_SOCKET=/var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    # Set this to the host Docker socket GID: `stat -c '%g' /var/run/docker.sock`
     group_add:
       - "991"
     ports:
