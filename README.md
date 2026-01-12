@@ -33,7 +33,14 @@ You now have:
 - Backend API at `http://localhost:4000` (still exposing `/api/*` for other tooling)
 - Web UI at `http://localhost:8080` (served via Nginx + static assets)
 
-The compose file automatically mounts `/var/run/docker.sock`, so make sure Docker is installed on the host and that your user can read that socket.
+The compose file mounts `/var/run/docker.sock` and adds the host Docker group to the API container so it can read the socket. If your Docker socket group ID differs from this machine, update it:
+
+```bash
+# Check the host docker group id
+stat -c '%g' /var/run/docker.sock
+```
+
+Then edit `docker-compose.yml` and set `group_add` for the `api` service to that value.
 
 ## Production build
 
@@ -41,6 +48,14 @@ The compose file automatically mounts `/var/run/docker.sock`, so make sure Docke
 # The frontend is static HTML/JS; files live directly in client/ and can be
 # served by your favorite HTTP server.
 ```
+
+## Security notes
+
+This app reads the host Docker socket. Access to `/var/run/docker.sock` is effectively root-level control over Docker, so treat the API as highly privileged.
+
+- Do not expose the API or web UI to the public internet without an auth layer.
+- Prefer running on a trusted private network or behind a VPN/reverse proxy with authentication.
+- This is not designed for multi-tenant or untrusted users.
 
 ## Notes
 
