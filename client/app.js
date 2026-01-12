@@ -38,10 +38,7 @@
     logsById: {},
     logsLoadingById: {},
     logsErrorById: {},
-    logsTailById: {},
-    execById: {},
-    execLoadingById: {},
-    execErrorById: {},
+    logsLineCountById: {},
     actionLoadingById: {},
   };
 
@@ -154,26 +151,13 @@
     return response.json();
   }
 
-  async function fetchContainerLogs(id, tail) {
+  async function fetchContainerLogs(id, lines) {
     const params = new URLSearchParams();
-    params.set('tail', String(tail || 200));
+    params.set('tail', String(lines || 200));
     const response = await fetch(`${API_BASE_URL}/api/containers/${id}/logs?${params.toString()}`);
     if (!response.ok) {
       const message = await response.text();
       throw new Error(message || 'Failed to load container logs');
-    }
-    return response.json();
-  }
-
-  async function runContainerExec(id, command) {
-    const response = await fetch(`${API_BASE_URL}/api/containers/${id}/exec`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
-    });
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || 'Failed to run exec command');
     }
     return response.json();
   }
@@ -236,36 +220,17 @@
   }
 
   async function loadLogs(containerId) {
-    const tail = state.logsTailById[containerId] || 200;
+    const lines = state.logsLineCountById[containerId] || 200;
     state.logsLoadingById[containerId] = true;
     state.logsErrorById[containerId] = null;
     render();
     try {
-      const data = await fetchContainerLogs(containerId, tail);
+      const data = await fetchContainerLogs(containerId, lines);
       state.logsById[containerId] = data.logs || '';
     } catch (err) {
       state.logsErrorById[containerId] = err instanceof Error ? err.message : 'Unable to load logs';
     } finally {
       state.logsLoadingById[containerId] = false;
-      render();
-    }
-  }
-
-  async function runExec(containerId, command) {
-    state.execLoadingById[containerId] = true;
-    state.execErrorById[containerId] = null;
-    render();
-    try {
-      const data = await runContainerExec(containerId, command);
-      state.execById[containerId] = {
-        output: data.output || '',
-        exitCode: typeof data.exitCode === 'number' ? data.exitCode : null,
-        ranAt: new Date().toISOString(),
-      };
-    } catch (err) {
-      state.execErrorById[containerId] = err instanceof Error ? err.message : 'Unable to run exec command';
-    } finally {
-      state.execLoadingById[containerId] = false;
       render();
     }
   }
@@ -330,12 +295,30 @@
     const logs = state.logsById[container.id] || '';
     const logsLoading = !!state.logsLoadingById[container.id];
     const logsError = state.logsErrorById[container.id];
-    const logsTail = state.logsTailById[container.id] || 200;
-    const execState = state.execById[container.id] || null;
-    const execLoading = !!state.execLoadingById[container.id];
-    const execError = state.execErrorById[container.id];
+    const logsLineCount = state.logsLineCountById[container.id] || 200;
     const isRunning = container.state === 'running';
     const isStopped = container.state === 'stopped';
+
+    const processTitles = (detail && detail.processTitles) || [];
+    const processRows = (detail && detail.processRows) || [];
+    const processTable = processTitles.length
+      ? `<div class="process-table">
+          <div class="process-header">
+            ${processTitles.map((title) => `<span>${escapeHTML(title)}</span>`).join('')}
+          </div>
+          <div class="process-body">
+            ${processRows
+              .map(
+                (row) => `
+                  <div class="process-row">
+                    ${row.map((cell) => `<span>${escapeHTML(cell)}</span>`).join('')}
+                  </div>
+                `
+              )
+              .join('')}
+          </div>
+        </div>`
+      : '<p class="detail-muted">No process data available.</p>';
 
     const envSection = detailLoading && !detail
       ? '<p class="detail-muted">Loading environment variables.</p>'
@@ -477,13 +460,13 @@
                 <h3>Logs</h3>
                 <div class="log-controls">
                   <label>
-                    Tail
+                    Lines
                     <input
                       type="number"
                       min="1"
                       max="2000"
-                      value="${escapeHTML(logsTail)}"
-                      data-action="logs-tail"
+                      value="${escapeHTML(logsLineCount)}"
+                      data-action="logs-lines"
                       data-id="${escapeHTML(container.id)}"
                     />
                   </label>
@@ -501,30 +484,9 @@
                 <pre class="log-output">${escapeHTML(logs || 'No logs loaded yet.')}</pre>
               </section>
 
-              <section class="detail-card detail-shell">
-                <h3>Shell</h3>
-                <div class="shell-controls">
-                  <input
-                    type="text"
-                    placeholder="Command to run via /bin/sh -lc"
-                    data-exec-input="${escapeHTML(container.id)}"
-                  />
-                  <button
-                    class="control"
-                    type="button"
-                    data-action="exec-command"
-                    data-id="${escapeHTML(container.id)}"
-                    ${execLoading ? 'disabled' : ''}
-                  >
-                    ${execLoading ? 'Running' : 'Run'}
-                  </button>
-                </div>
-                ${execError ? `<div class="error-banner">${escapeHTML(execError)}</div>` : ''}
-                <pre class="shell-output">${
-                  execState
-                    ? `${escapeHTML(execState.output || '')}${execState.exitCode !== null ? `\n\n[exit ${execState.exitCode}]` : ''}`
-                    : 'No commands run yet.'
-                }</pre>
+              <section class="detail-card detail-processes">
+                <h3>Processes</h3>
+                ${processTable}
               </section>
             </div>
           </div>
@@ -725,17 +687,6 @@
         loadLogs(id);
       }
 
-      if (action === 'exec-command' && id) {
-        const input = els.tableContainer.querySelector(`[data-exec-input="${id}"]`);
-        const command = input ? input.value.trim() : '';
-        if (!command) {
-          state.execErrorById[id] = 'Enter a command to run.';
-          render();
-          return;
-        }
-        runExec(id, command);
-      }
-
       if (action === 'close-detail') {
         state.selectedId = null;
         state.detailError = null;
@@ -744,12 +695,12 @@
     });
 
     els.tableContainer.addEventListener('input', (event) => {
-      const input = event.target.closest('input[data-action="logs-tail"]');
+      const input = event.target.closest('input[data-action="logs-lines"]');
       if (!input) return;
       const id = input.getAttribute('data-id');
       if (!id) return;
       const value = Number(input.value);
-      state.logsTailById[id] = Number.isFinite(value) && value > 0 ? value : 200;
+      state.logsLineCountById[id] = Number.isFinite(value) && value > 0 ? value : 200;
     });
   }
 

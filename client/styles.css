@@ -387,8 +387,7 @@ tr:hover td {
   flex-wrap: wrap;
 }
 
-.log-controls,
-.shell-controls {
+.log-controls {
   display: flex;
   gap: 0.5rem;
   align-items: center;
@@ -404,8 +403,7 @@ tr:hover td {
   color: #94a3b8;
 }
 
-.log-controls input,
-.shell-controls input {
+.log-controls input {
   background: rgba(15, 23, 42, 0.8);
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 0.45rem;
@@ -413,22 +411,58 @@ tr:hover td {
   padding: 0.35rem 0.5rem;
 }
 
-.shell-controls input {
-  flex: 1;
-  min-width: 200px;
-}
-
 .log-output,
-.shell-output {
   background: rgba(2, 6, 23, 0.95);
   border: 1px solid rgba(30, 41, 59, 0.8);
   border-radius: 0.6rem;
   padding: 0.75rem;
   font-size: 0.78rem;
   color: #e2e8f0;
-  max-height: 240px;
+  max-height: 420px;
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.detail-logs,
+.detail-processes {
+  grid-column: 1 / -1;
+}
+
+.process-table {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: #e2e8f0;
+}
+
+.process-header,
+.process-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(120px, 1fr);
+  gap: 0.5rem;
+}
+
+.process-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.process-body {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.process-row {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(30, 41, 59, 0.6);
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.5rem;
 }
 
 .detail-grid {

@@ -62,7 +62,7 @@ This app reads the host Docker socket. Access to `/var/run/docker.sock` is effec
 - Do not expose the API or web UI to the public internet without an auth layer.
 - Prefer running on a trusted private network or behind a VPN/reverse proxy with authentication.
 - This is not designed for multi-tenant or untrusted users.
-- The API can start/stop/restart containers and run exec commands, so protect it accordingly.
+- The API can start/stop/restart containers and read logs, so protect it accordingly.
 
 ## Notes
 
