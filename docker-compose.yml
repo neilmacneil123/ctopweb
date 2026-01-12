@@ -21,6 +21,7 @@ services:
       - api
     security_opt:
       - "seccomp=unconfined"
+      - "apparmor=unconfined"
     ports:
       - "8080:80"
     restart: unless-stopped
