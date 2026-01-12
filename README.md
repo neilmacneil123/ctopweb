@@ -40,7 +40,13 @@ The compose file mounts `/var/run/docker.sock` and adds the host Docker group to
 stat -c '%g' /var/run/docker.sock
 ```
 
-Then edit `docker-compose.yml` and set `group_add` for the `api` service to that value.
+Then create a `.env` file with the value:
+
+```bash
+DOCKER_GID=123
+```
+
+Compose will load that and pass it into `group_add`.
 
 ## Production build
 
@@ -56,6 +62,7 @@ This app reads the host Docker socket. Access to `/var/run/docker.sock` is effec
 - Do not expose the API or web UI to the public internet without an auth layer.
 - Prefer running on a trusted private network or behind a VPN/reverse proxy with authentication.
 - This is not designed for multi-tenant or untrusted users.
+- The API can start/stop/restart containers and run exec commands, so protect it accordingly.
 
 ## Notes
 

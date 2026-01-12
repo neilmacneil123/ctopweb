@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -17,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -116,11 +119,46 @@ func main() {
 		handleContainers(w, r, cli)
 	})
 	mux.HandleFunc("/api/containers/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"message": "Method not allowed"})
+		path := strings.TrimPrefix(r.URL.Path, "/api/containers/")
+		path = strings.TrimPrefix(path, "/")
+		if path == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Missing container id"})
 			return
 		}
-		handleContainerDetail(w, r, cli)
+		parts := strings.Split(path, "/")
+		id := parts[0]
+		if len(parts) == 1 {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"message": "Method not allowed"})
+				return
+			}
+			handleContainerDetail(w, r, cli)
+			return
+		}
+
+		action := parts[1]
+		switch action {
+		case "start", "stop", "restart":
+			if r.Method != http.MethodPost {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"message": "Method not allowed"})
+				return
+			}
+			handleContainerAction(w, r, cli, id, action)
+		case "logs":
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"message": "Method not allowed"})
+				return
+			}
+			handleContainerLogs(w, r, cli, id)
+		case "exec":
+			if r.Method != http.MethodPost {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"message": "Method not allowed"})
+				return
+			}
+			handleContainerExec(w, r, cli, id)
+		default:
+			writeJSON(w, http.StatusNotFound, map[string]string{"message": "Unknown container action"})
+		}
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -255,6 +293,155 @@ func handleContainerDetail(w http.ResponseWriter, r *http.Request, cli *client.C
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+func handleContainerAction(w http.ResponseWriter, r *http.Request, cli *client.Client, id, action string) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	switch action {
+	case "start":
+		if err := cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"message": "Unable to start container",
+				"error":   err.Error(),
+			})
+			return
+		}
+	case "stop":
+		timeout := 10
+		if err := cli.ContainerStop(ctx, id, container.StopOptions{Timeout: &timeout}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"message": "Unable to stop container",
+				"error":   err.Error(),
+			})
+			return
+		}
+	case "restart":
+		timeout := 10
+		if err := cli.ContainerRestart(ctx, id, container.StopOptions{Timeout: &timeout}); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"message": "Unable to restart container",
+				"error":   err.Error(),
+			})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func handleContainerLogs(w http.ResponseWriter, r *http.Request, cli *client.Client, id string) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	query := r.URL.Query()
+	tail := query.Get("tail")
+	if tail == "" {
+		tail = "200"
+	}
+	since := query.Get("since")
+	timestamps := query.Get("timestamps") == "1"
+
+	reader, err := cli.ContainerLogs(ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Timestamps: timestamps,
+		Tail:       tail,
+		Since:      since,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Unable to fetch logs",
+			"error":   err.Error(),
+		})
+		return
+	}
+	defer reader.Close()
+
+	var output bytes.Buffer
+	if _, err := stdcopy.StdCopy(&output, &output, reader); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Unable to read logs",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	data := output.Bytes()
+	writeJSON(w, http.StatusOK, map[string]string{"logs": string(data)})
+}
+
+type execRequest struct {
+	Command string `json:"command"`
+	User    string `json:"user"`
+	WorkDir string `json:"workDir"`
+}
+
+func handleContainerExec(w http.ResponseWriter, r *http.Request, cli *client.Client, id string) {
+	var payload execRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"message": "Invalid request body"})
+		return
+	}
+
+	command := strings.TrimSpace(payload.Command)
+	cmd := []string{"/bin/sh"}
+	if command != "" {
+		cmd = []string{"/bin/sh", "-lc", command}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+
+	execResp, err := cli.ContainerExecCreate(ctx, id, types.ExecConfig{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty:          false,
+		User:         payload.User,
+		WorkingDir:   payload.WorkDir,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Unable to start exec session",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	attach, err := cli.ContainerExecAttach(ctx, execResp.ID, types.ExecStartCheck{Tty: false})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Unable to attach exec session",
+			"error":   err.Error(),
+		})
+		return
+	}
+	defer attach.Close()
+
+	var execOutput bytes.Buffer
+	if _, err := stdcopy.StdCopy(&execOutput, &execOutput, attach.Reader); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Unable to read exec output",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	inspect, err := cli.ContainerExecInspect(ctx, execResp.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{
+			"message": "Unable to inspect exec session",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"output":   execOutput.String(),
+		"exitCode": inspect.ExitCode,
+	})
 }
 
 func buildContainerPayload(ctx context.Context, cli *client.Client, info types.Container) (ContainerInfo, error) {
@@ -667,7 +854,7 @@ func roundTo(value float64, places int) float64 {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

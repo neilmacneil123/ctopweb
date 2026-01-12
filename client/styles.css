@@ -387,6 +387,50 @@ tr:hover td {
   flex-wrap: wrap;
 }
 
+.log-controls,
+.shell-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.log-controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.log-controls input,
+.shell-controls input {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 0.45rem;
+  color: #e2e8f0;
+  padding: 0.35rem 0.5rem;
+}
+
+.shell-controls input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.log-output,
+.shell-output {
+  background: rgba(2, 6, 23, 0.95);
+  border: 1px solid rgba(30, 41, 59, 0.8);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

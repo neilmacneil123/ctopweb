@@ -35,6 +35,14 @@
     detailLoading: false,
     detailError: null,
     history: {},
+    logsById: {},
+    logsLoadingById: {},
+    logsErrorById: {},
+    logsTailById: {},
+    execById: {},
+    execLoadingById: {},
+    execErrorById: {},
+    actionLoadingById: {},
   };
 
   const HISTORY_POINTS = 40;
@@ -134,6 +142,42 @@
     return response.json();
   }
 
+  async function postContainerAction(id, action) {
+    const response = await fetch(`${API_BASE_URL}/api/containers/${id}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Failed to ${action} container`);
+    }
+    return response.json();
+  }
+
+  async function fetchContainerLogs(id, tail) {
+    const params = new URLSearchParams();
+    params.set('tail', String(tail || 200));
+    const response = await fetch(`${API_BASE_URL}/api/containers/${id}/logs?${params.toString()}`);
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to load container logs');
+    }
+    return response.json();
+  }
+
+  async function runContainerExec(id, command) {
+    const response = await fetch(`${API_BASE_URL}/api/containers/${id}/exec`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    });
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || 'Failed to run exec command');
+    }
+    return response.json();
+  }
+
   async function loadContainers({ silent } = {}) {
     if (silent) {
       state.refreshing = true;
@@ -171,6 +215,57 @@
       state.detailError = err instanceof Error ? err.message : 'Unable to load container detail';
     } finally {
       state.detailLoading = false;
+      render();
+    }
+  }
+
+  async function performAction(containerId, action) {
+    state.actionLoadingById[containerId] = true;
+    state.detailError = null;
+    render();
+    try {
+      await postContainerAction(containerId, action);
+      await loadContainers({ silent: true });
+      await loadDetail(containerId);
+    } catch (err) {
+      state.detailError = err instanceof Error ? err.message : `Unable to ${action} container`;
+    } finally {
+      state.actionLoadingById[containerId] = false;
+      render();
+    }
+  }
+
+  async function loadLogs(containerId) {
+    const tail = state.logsTailById[containerId] || 200;
+    state.logsLoadingById[containerId] = true;
+    state.logsErrorById[containerId] = null;
+    render();
+    try {
+      const data = await fetchContainerLogs(containerId, tail);
+      state.logsById[containerId] = data.logs || '';
+    } catch (err) {
+      state.logsErrorById[containerId] = err instanceof Error ? err.message : 'Unable to load logs';
+    } finally {
+      state.logsLoadingById[containerId] = false;
+      render();
+    }
+  }
+
+  async function runExec(containerId, command) {
+    state.execLoadingById[containerId] = true;
+    state.execErrorById[containerId] = null;
+    render();
+    try {
+      const data = await runContainerExec(containerId, command);
+      state.execById[containerId] = {
+        output: data.output || '',
+        exitCode: typeof data.exitCode === 'number' ? data.exitCode : null,
+        ranAt: new Date().toISOString(),
+      };
+    } catch (err) {
+      state.execErrorById[containerId] = err instanceof Error ? err.message : 'Unable to run exec command';
+    } finally {
+      state.execLoadingById[containerId] = false;
       render();
     }
   }
@@ -231,6 +326,16 @@
     const history = state.history[container.id] || null;
     const detailError = state.detailError;
     const detailLoading = state.detailLoading;
+    const actionLoading = !!state.actionLoadingById[container.id];
+    const logs = state.logsById[container.id] || '';
+    const logsLoading = !!state.logsLoadingById[container.id];
+    const logsError = state.logsErrorById[container.id];
+    const logsTail = state.logsTailById[container.id] || 200;
+    const execState = state.execById[container.id] || null;
+    const execLoading = !!state.execLoadingById[container.id];
+    const execError = state.execErrorById[container.id];
+    const isRunning = container.state === 'running';
+    const isStopped = container.state === 'stopped';
 
     const envSection = detailLoading && !detail
       ? '<p class="detail-muted">Loading environment variables.</p>'
@@ -272,6 +377,33 @@
                   ${detailLoading ? 'disabled' : ''}
                 >
                   Refresh Detail
+                </button>
+                <button
+                  class="control"
+                  type="button"
+                  data-action="start"
+                  data-id="${escapeHTML(container.id)}"
+                  ${actionLoading || isRunning ? 'disabled' : ''}
+                >
+                  Start
+                </button>
+                <button
+                  class="control"
+                  type="button"
+                  data-action="stop"
+                  data-id="${escapeHTML(container.id)}"
+                  ${actionLoading || isStopped ? 'disabled' : ''}
+                >
+                  Stop
+                </button>
+                <button
+                  class="control"
+                  type="button"
+                  data-action="restart"
+                  data-id="${escapeHTML(container.id)}"
+                  ${actionLoading ? 'disabled' : ''}
+                >
+                  Restart
                 </button>
                 <button class="control" type="button" data-action="close-detail">Close</button>
               </div>
@@ -339,6 +471,60 @@
               <section class="detail-card detail-env">
                 <h3>Environment</h3>
                 ${envSection}
+              </section>
+
+              <section class="detail-card detail-logs">
+                <h3>Logs</h3>
+                <div class="log-controls">
+                  <label>
+                    Tail
+                    <input
+                      type="number"
+                      min="1"
+                      max="2000"
+                      value="${escapeHTML(logsTail)}"
+                      data-action="logs-tail"
+                      data-id="${escapeHTML(container.id)}"
+                    />
+                  </label>
+                  <button
+                    class="control"
+                    type="button"
+                    data-action="refresh-logs"
+                    data-id="${escapeHTML(container.id)}"
+                    ${logsLoading ? 'disabled' : ''}
+                  >
+                    ${logsLoading ? 'Loading' : 'Fetch Logs'}
+                  </button>
+                </div>
+                ${logsError ? `<div class="error-banner">${escapeHTML(logsError)}</div>` : ''}
+                <pre class="log-output">${escapeHTML(logs || 'No logs loaded yet.')}</pre>
+              </section>
+
+              <section class="detail-card detail-shell">
+                <h3>Shell</h3>
+                <div class="shell-controls">
+                  <input
+                    type="text"
+                    placeholder="Command to run via /bin/sh -lc"
+                    data-exec-input="${escapeHTML(container.id)}"
+                  />
+                  <button
+                    class="control"
+                    type="button"
+                    data-action="exec-command"
+                    data-id="${escapeHTML(container.id)}"
+                    ${execLoading ? 'disabled' : ''}
+                  >
+                    ${execLoading ? 'Running' : 'Run'}
+                  </button>
+                </div>
+                ${execError ? `<div class="error-banner">${escapeHTML(execError)}</div>` : ''}
+                <pre class="shell-output">${
+                  execState
+                    ? `${escapeHTML(execState.output || '')}${execState.exitCode !== null ? `\n\n[exit ${execState.exitCode}]` : ''}`
+                    : 'No commands run yet.'
+                }</pre>
               </section>
             </div>
           </div>
@@ -531,11 +717,39 @@
         loadDetail(id);
       }
 
+      if ((action === 'start' || action === 'stop' || action === 'restart') && id) {
+        performAction(id, action);
+      }
+
+      if (action === 'refresh-logs' && id) {
+        loadLogs(id);
+      }
+
+      if (action === 'exec-command' && id) {
+        const input = els.tableContainer.querySelector(`[data-exec-input="${id}"]`);
+        const command = input ? input.value.trim() : '';
+        if (!command) {
+          state.execErrorById[id] = 'Enter a command to run.';
+          render();
+          return;
+        }
+        runExec(id, command);
+      }
+
       if (action === 'close-detail') {
         state.selectedId = null;
         state.detailError = null;
         render();
       }
+    });
+
+    els.tableContainer.addEventListener('input', (event) => {
+      const input = event.target.closest('input[data-action="logs-tail"]');
+      if (!input) return;
+      const id = input.getAttribute('data-id');
+      if (!id) return;
+      const value = Number(input.value);
+      state.logsTailById[id] = Number.isFinite(value) && value > 0 ? value : 200;
     });
   }
 

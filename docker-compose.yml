@@ -7,9 +7,11 @@ services:
       - DOCKER_SOCKET=/var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    # Set this to the host Docker socket GID: `stat -c '%g' /var/run/docker.sock`
+    # Set DOCKER_GID in a .env file: `DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)`
     group_add:
-      - "991"
+      - "${DOCKER_GID}"
+    security_opt:
+      - "apparmor=unconfined"
     ports:
       - "4000:4000"
     restart: unless-stopped
